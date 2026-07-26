@@ -1,0 +1,9 @@
+BasedOnStyle: LLVM
+Standard: c++20
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+SortIncludes: CaseSensitive
+DerivePointerAlignment: false
+PointerAlignment: Left

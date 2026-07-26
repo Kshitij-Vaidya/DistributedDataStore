@@ -1,0 +1,122 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.os }} debug
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja on Ubuntu
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+
+      - name: Install Ninja on macOS
+        if: runner.os == 'macOS'
+        run: brew install ninja
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/debug/_deps
+          key: ${{ runner.os }}-debug-deps-${{ hashFiles('CMakeLists.txt') }}
+
+      - name: Configure
+        run: cmake --preset debug -DNOVACACHE_WARNINGS_AS_ERRORS=ON
+
+      - name: Build
+        run: cmake --build --preset debug --parallel
+
+      - name: Test
+        run: ctest --preset debug --output-on-failure
+
+      - name: Smoke test
+        run: ./scripts/smoke-test.sh debug
+
+      - name: Upload failing test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-${{ matrix.os }}
+          path: build/debug/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  asan-ubsan:
+    name: Linux ASan and UBSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/asan/_deps
+          key: linux-asan-deps-${{ hashFiles('CMakeLists.txt') }}
+      - name: Configure
+        run: cmake --preset asan -DNOVACACHE_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build --preset asan --parallel
+      - name: Test
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: ctest --preset asan --output-on-failure
+      - name: Upload failing test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-asan
+          path: build/asan/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  tsan:
+    name: Linux TSan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Ninja
+        run: sudo apt-get update && sudo apt-get install -y ninja-build
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build/tsan/_deps
+          key: linux-tsan-deps-${{ hashFiles('CMakeLists.txt') }}
+      - name: Configure
+        run: cmake --preset tsan -DNOVACACHE_WARNINGS_AS_ERRORS=ON
+      - name: Build
+        run: cmake --build --preset tsan --parallel
+      - name: Test
+        env:
+          TSAN_OPTIONS: halt_on_error=1
+        run: ctest --preset tsan --output-on-failure
+      - name: Upload failing test log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log-tsan
+          path: build/tsan/Testing/Temporary/LastTest.log
+          if-no-files-found: ignore
+
+  formatting:
+    name: Formatting
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install clang-format
+        run: sudo apt-get update && sudo apt-get install -y clang-format
+      - name: Check formatting
+        run: ./scripts/check-format.sh

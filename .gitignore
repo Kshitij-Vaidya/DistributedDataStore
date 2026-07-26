@@ -67,3 +67,15 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Editor and operating-system metadata
+.DS_Store
+.idea/
+.vscode/
+.clangd/
+
+# Runtime and coverage output
+data/
+coverage/
+*.profraw
+*.profdata
