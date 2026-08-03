@@ -39,8 +39,15 @@ cmake --build --preset release -j
 ctest --preset release --output-on-failure
 ```
 
-The Phase 0 programs only implement `--version`. Server networking begins in
-Phase 1.
+The Phase 1 server can be exercised locally with:
+
+```bash
+./build/debug/novacache-server --host 127.0.0.1 --port 6379
+./build/debug/novacache-cli -p 6379 PING
+redis-cli -p 6379 PING
+```
+
+It is intentionally blocking and single-threaded until the Phase 2 reactor.
 
 ## Sanitizers
 
@@ -69,7 +76,12 @@ Run the formatting check with:
 To apply formatting:
 
 ```bash
-clang-format -i apps/*.cpp src/*.cpp include/novacache/*.hpp tests/unit/*.cpp
+clang-format -i \
+  apps/*.cpp \
+  src/**/*.cpp \
+  include/novacache/**/*.hpp \
+  tests/unit/*.cpp \
+  tests/integration/*.cpp
 ```
 
 Configure a Debug build before running clang-tidy so

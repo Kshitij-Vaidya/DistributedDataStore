@@ -1,15 +1,74 @@
+#include "novacache/server/server.hpp"
 #include "novacache/version.hpp"
 
+#include <charconv>
+#include <cstdint>
+#include <exception>
 #include <iostream>
+#include <optional>
+#include <string>
 #include <string_view>
+#include <system_error>
+
+namespace {
+
+[[nodiscard]] std::optional<std::uint16_t> parse_port(const std::string_view text) {
+    unsigned int value = 0;
+    const char* const begin = text.data();
+    const auto result = std::from_chars(begin, begin + text.size(), value);
+    if (text.empty() || result.ec != std::errc{} || result.ptr != begin + text.size() ||
+        value > 65535U) {
+        return std::nullopt;
+    }
+    return static_cast<std::uint16_t>(value);
+}
+
+void usage() {
+    std::cerr << "usage: novacache-server [-h host|--host host] [-p port|--port port]\n";
+}
+
+} // namespace
 
 int main(int argc, char* argv[]) {
-    if (argc == 2 && std::string_view{argv[1]} == "--version") {
-        std::cout << "novacache-server " << novacache::version() << '\n';
-        return 0;
+    novacache::server::ServerConfig config;
+    for (int index = 1; index < argc; ++index) {
+        const std::string_view argument{argv[index]};
+        if (argument == "--version") {
+            std::cout << "novacache-server " << novacache::version() << '\n';
+            return 0;
+        }
+        if (argument == "-h" || argument == "--host") {
+            if (index + 1 >= argc) {
+                usage();
+                return 2;
+            }
+            config.host = argv[++index];
+            continue;
+        }
+        if (argument == "-p" || argument == "--port") {
+            if (index + 1 >= argc) {
+                usage();
+                return 2;
+            }
+            const std::optional<std::uint16_t> port = parse_port(argv[++index]);
+            if (!port.has_value()) {
+                std::cerr << "novacache-server: invalid port\n";
+                return 2;
+            }
+            config.port = *port;
+            continue;
+        }
+        usage();
+        return 2;
     }
 
-    std::cerr << "novacache-server: networking is not implemented until Phase 1\n"
-              << "Run with --version to verify this Phase 0 build.\n";
-    return 1;
+    try {
+        novacache::server::Server server{std::move(config)};
+        std::cout << "NovaCache listening on port " << server.bound_port() << std::endl;
+        server.run();
+    } catch (const std::exception& error) {
+        std::cerr << "novacache-server: " << error.what() << '\n';
+        return 1;
+    }
+    return 0;
 }

@@ -2,9 +2,11 @@
 
 ## Current state
 
-Phase 0 provides the build, test, documentation, and CI foundation. The
-applications only expose `--version`; the runtime components below are planned
-and will be introduced one tested milestone at a time.
+Phase 1 implements the RESP2 value model, incremental parser and encoder,
+sharded in-memory store, lazy monotonic TTLs, command registry, RAII POSIX
+sockets, blocking server, and one-shot CLI. The server currently processes one
+connected client at a time. The reactor, worker pool, locks, and active expiry
+shown below are Phase 2 work.
 
 ## Component flow
 
@@ -24,8 +26,9 @@ connection buffers -> incremental RESP2 parser -> command registry
                                          replica stream
 ```
 
-The shared `novacache_core` library contains reusable runtime behavior. Thin
-programs under `apps/` provide the server, CLI, and benchmark entry points.
+The shared `novacache_core` library contains protocol, store, command, socket,
+and server behavior. Thin programs under `apps/` provide the server, CLI, and
+benchmark entry points.
 Public interfaces live under `include/novacache/`; implementation details live
 under `src/`.
 
@@ -47,10 +50,11 @@ under `src/`.
 
 ## Store and time model
 
-Each shard will own its map, expiration metadata, memory accounting, and lock.
-Values will be type-safe variants for strings, lists, sets, and sorted sets.
-Runtime expiration uses monotonic deadlines, while persistence records absolute
-wall-clock timestamps so expiration remains meaningful after restart.
+Phase 1 shards already own a fixed partition of the keyspace and lazy expiration
+metadata. Values are type-safe variants for strings, integers, lists, and sets;
+list/set commands arrive later. Runtime expiration decisions use monotonic
+deadlines, and each expiry also records an absolute wall-clock timestamp for
+future snapshot/WAL serialization so expiration remains meaningful after restart.
 
 ## Mutation ordering
 

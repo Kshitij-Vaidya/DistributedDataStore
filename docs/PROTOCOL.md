@@ -2,8 +2,9 @@
 
 ## Status
 
-This document defines the initial wire contract. Phase 0 contains no network
-server; protocol implementation begins in Phase 1.
+This document defines the implemented Phase 1 wire contract. NovaCache accepts
+RESP2 clients on its blocking TCP server; unsupported Redis commands and RESP3
+types are outside the current compatibility scope.
 
 ## Transport and framing
 
@@ -60,7 +61,7 @@ A missing `GET` returns `$-1\r\n`.
 - `TTL` returns `-2` when the key does not exist.
 - `TTL` returns `-1` when the key has no expiration.
 - Runtime deadlines use a monotonic clock.
-- Persistence stores absolute wall-clock expiration times.
+- Each expiry also stores an absolute wall-clock timestamp for persistence.
 - A key observed after its deadline behaves as absent.
 
 ## Errors
@@ -90,3 +91,7 @@ Defaults are defined by `config/novacache.example.conf`:
 The parser must distinguish incomplete data from malformed or oversized data.
 Unsupported commands receive an error; NovaCache does not claim complete Redis
 compatibility.
+
+Malformed, oversized, or excessively nested frames receive an
+`ERR Protocol error` response when safe, after which the server closes that
+client connection. Complete pipelined commands are processed in wire order.

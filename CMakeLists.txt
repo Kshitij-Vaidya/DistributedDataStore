@@ -27,7 +27,16 @@ function(novacache_configure_target target)
     novacache_enable_sanitizers(${target})
 endfunction()
 
-add_library(novacache_core src/version.cpp)
+add_library(
+    novacache_core
+    src/commands/registry.cpp
+    src/net/socket.cpp
+    src/protocol/encoder.cpp
+    src/protocol/parser.cpp
+    src/server/server.cpp
+    src/store/store.cpp
+    src/version.cpp
+)
 add_library(NovaCache::core ALIAS novacache_core)
 
 target_include_directories(
@@ -51,6 +60,7 @@ endforeach()
 
 include(CTest)
 if(BUILD_TESTING)
+    find_package(Threads REQUIRED)
     include(FetchContent)
     set(INSTALL_GTEST OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
@@ -61,8 +71,21 @@ if(BUILD_TESTING)
     )
     FetchContent_MakeAvailable(googletest)
 
-    add_executable(novacache-tests tests/unit/version_test.cpp)
-    target_link_libraries(novacache-tests PRIVATE NovaCache::core GTest::gtest_main)
+    add_executable(
+        novacache-tests
+        tests/integration/server_test.cpp
+        tests/unit/expiry_test.cpp
+        tests/unit/protocol_test.cpp
+        tests/unit/store_test.cpp
+        tests/unit/version_test.cpp
+    )
+    target_link_libraries(
+        novacache-tests
+        PRIVATE
+            NovaCache::core
+            GTest::gtest_main
+            Threads::Threads
+    )
     novacache_configure_target(novacache-tests)
 
     include(GoogleTest)
