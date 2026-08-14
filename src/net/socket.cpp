@@ -3,6 +3,7 @@
 #include <arpa/inet.h>
 #include <cerrno>
 #include <cstring>
+#include <fcntl.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <unistd.h>
@@ -177,9 +178,41 @@ Socket Socket::accept() const {
     }
 }
 
+std::optional<Socket> Socket::try_accept() const {
+    for (;;) {
+        const int descriptor = ::accept(descriptor_, nullptr, nullptr);
+        if (descriptor >= 0) {
+            try {
+                configure_no_sigpipe(descriptor);
+                return Socket{descriptor};
+            } catch (...) {
+                static_cast<void>(::close(descriptor));
+                throw;
+            }
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return std::nullopt;
+        }
+        throw_socket_error("accept");
+    }
+}
+
 std::size_t Socket::receive(const std::span<char> buffer) const {
+    for (;;) {
+        const IoResult result = try_receive(buffer);
+        if (result.status == IoStatus::ok || result.status == IoStatus::closed) {
+            return result.bytes;
+        }
+        throw_socket_error("recv");
+    }
+}
+
+IoResult Socket::try_receive(const std::span<char> buffer) const {
     if (buffer.empty()) {
-        return 0;
+        return {IoStatus::ok, 0};
     }
     if (buffer.size() > static_cast<std::size_t>(std::numeric_limits<ssize_t>::max())) {
         throw std::length_error("receive buffer is too large");
@@ -187,38 +220,75 @@ std::size_t Socket::receive(const std::span<char> buffer) const {
 
     for (;;) {
         const ssize_t received = ::recv(descriptor_, buffer.data(), buffer.size(), 0);
-        if (received >= 0) {
-            return static_cast<std::size_t>(received);
+        if (received > 0) {
+            return {IoStatus::ok, static_cast<std::size_t>(received)};
         }
-        if (errno != EINTR) {
-            throw_socket_error("recv");
+        if (received == 0) {
+            return {IoStatus::closed, 0};
         }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return {IoStatus::would_block, 0};
+        }
+        throw_socket_error("recv");
     }
 }
 
 void Socket::send_all(const std::string_view bytes) const {
     std::size_t sent = 0;
     while (sent < bytes.size()) {
-        const std::size_t remaining = bytes.size() - sent;
-        const std::size_t chunk =
-            std::min(remaining, static_cast<std::size_t>(std::numeric_limits<ssize_t>::max()));
-#if defined(MSG_NOSIGNAL)
-        constexpr int flags = MSG_NOSIGNAL;
-#else
-        constexpr int flags = 0;
-#endif
-        const ssize_t result = ::send(descriptor_, bytes.data() + sent, chunk, flags);
-        if (result > 0) {
-            sent += static_cast<std::size_t>(result);
+        const IoResult result = try_send(bytes.substr(sent));
+        if (result.status == IoStatus::ok && result.bytes > 0U) {
+            sent += result.bytes;
             continue;
         }
-        if (result < 0 && errno == EINTR) {
-            continue;
-        }
-        if (result == 0) {
+        if (result.status == IoStatus::closed) {
             throw std::system_error(EPIPE, std::generic_category(), "send");
         }
         throw_socket_error("send");
+    }
+}
+
+IoResult Socket::try_send(const std::string_view bytes) const {
+    if (bytes.empty()) {
+        return {IoStatus::ok, 0};
+    }
+
+    const std::size_t chunk =
+        std::min(bytes.size(), static_cast<std::size_t>(std::numeric_limits<ssize_t>::max()));
+#if defined(MSG_NOSIGNAL)
+    constexpr int flags = MSG_NOSIGNAL;
+#else
+    constexpr int flags = 0;
+#endif
+    for (;;) {
+        const ssize_t result = ::send(descriptor_, bytes.data(), chunk, flags);
+        if (result > 0) {
+            return {IoStatus::ok, static_cast<std::size_t>(result)};
+        }
+        if (result == 0) {
+            return {IoStatus::closed, 0};
+        }
+        if (errno == EINTR) {
+            continue;
+        }
+        if (errno == EAGAIN || errno == EWOULDBLOCK) {
+            return {IoStatus::would_block, 0};
+        }
+        throw_socket_error("send");
+    }
+}
+
+void Socket::set_nonblocking(const bool enabled) const {
+    const int flags = ::fcntl(descriptor_, F_GETFL, 0);
+    if (flags < 0) {
+        throw_socket_error("fcntl(F_GETFL)");
+    }
+    const int updated = enabled ? (flags | O_NONBLOCK) : (flags & ~O_NONBLOCK);
+    if (::fcntl(descriptor_, F_SETFL, updated) != 0) {
+        throw_socket_error("fcntl(F_SETFL)");
     }
 }
 

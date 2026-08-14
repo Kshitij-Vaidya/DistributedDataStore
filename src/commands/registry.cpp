@@ -57,24 +57,24 @@ constexpr std::string_view wrong_type =
     return seconds <= room;
 }
 
-[[nodiscard]] RespValue ping(const std::vector<std::string>& arguments, store::Store&) {
+[[nodiscard]] RespValue ping(const std::vector<std::string>& arguments, CommandContext&) {
     if (arguments.size() == 1U) {
         return RespValue::simple("PONG");
     }
     return RespValue::bulk(arguments[1]);
 }
 
-[[nodiscard]] RespValue echo(const std::vector<std::string>& arguments, store::Store&) {
+[[nodiscard]] RespValue echo(const std::vector<std::string>& arguments, CommandContext&) {
     return RespValue::bulk(arguments[1]);
 }
 
-[[nodiscard]] RespValue set(const std::vector<std::string>& arguments, store::Store& store) {
-    store.set(arguments[1], std::string{arguments[2]});
+[[nodiscard]] RespValue set(const std::vector<std::string>& arguments, CommandContext& context) {
+    context.store.set(arguments[1], std::string{arguments[2]});
     return RespValue::simple("OK");
 }
 
-[[nodiscard]] RespValue get(const std::vector<std::string>& arguments, store::Store& store) {
-    const std::optional<store::Value> value = store.get(arguments[1]);
+[[nodiscard]] RespValue get(const std::vector<std::string>& arguments, CommandContext& context) {
+    const std::optional<store::Value> value = context.store.get(arguments[1]);
     if (!value.has_value()) {
         return RespValue::bulk(std::nullopt);
     }
@@ -84,41 +84,39 @@ constexpr std::string_view wrong_type =
     return RespValue::error(std::string{wrong_type});
 }
 
-[[nodiscard]] RespValue del(const std::vector<std::string>& arguments, store::Store& store) {
-    std::int64_t removed = 0;
+[[nodiscard]] RespValue del(const std::vector<std::string>& arguments, CommandContext& context) {
+    std::vector<std::string_view> keys;
+    keys.reserve(arguments.size() - 1U);
     for (std::size_t index = 1; index < arguments.size(); ++index) {
-        if (store.del(arguments[index])) {
-            ++removed;
-        }
+        keys.emplace_back(arguments[index]);
     }
-    return RespValue::integer(removed);
+    return RespValue::integer(static_cast<std::int64_t>(context.store.del_many(keys)));
 }
 
-[[nodiscard]] RespValue exists(const std::vector<std::string>& arguments, store::Store& store) {
-    std::int64_t count = 0;
+[[nodiscard]] RespValue exists(const std::vector<std::string>& arguments, CommandContext& context) {
+    std::vector<std::string_view> keys;
+    keys.reserve(arguments.size() - 1U);
     for (std::size_t index = 1; index < arguments.size(); ++index) {
-        if (store.exists(arguments[index])) {
-            ++count;
-        }
+        keys.emplace_back(arguments[index]);
     }
-    return RespValue::integer(count);
+    return RespValue::integer(static_cast<std::int64_t>(context.store.exists_many(keys)));
 }
 
-[[nodiscard]] RespValue expire(const std::vector<std::string>& arguments, store::Store& store) {
+[[nodiscard]] RespValue expire(const std::vector<std::string>& arguments, CommandContext& context) {
     const std::optional<std::int64_t> seconds = parse_int64(arguments[2]);
     if (!seconds.has_value() || !expiration_is_representable(*seconds)) {
         return RespValue::error(std::string{invalid_integer});
     }
-    const bool changed = store.expire(arguments[1], std::chrono::seconds{*seconds});
+    const bool changed = context.store.expire(arguments[1], std::chrono::seconds{*seconds});
     return RespValue::integer(changed ? 1 : 0);
 }
 
-[[nodiscard]] RespValue ttl(const std::vector<std::string>& arguments, store::Store& store) {
-    return RespValue::integer(store.ttl(arguments[1]));
+[[nodiscard]] RespValue ttl(const std::vector<std::string>& arguments, CommandContext& context) {
+    return RespValue::integer(context.store.ttl(arguments[1]));
 }
 
-[[nodiscard]] RespValue keys(const std::vector<std::string>& arguments, store::Store& store) {
-    store::KeysResult result = store.keys(arguments[1]);
+[[nodiscard]] RespValue keys(const std::vector<std::string>& arguments, CommandContext& context) {
+    store::KeysResult result = context.store.keys(arguments[1]);
     if (result.status != store::KeysStatus::ok) {
         return RespValue::error("ERR unsupported pattern");
     }
@@ -129,6 +127,14 @@ constexpr std::string_view wrong_type =
         values.push_back(RespValue::bulk(std::move(key)));
     }
     return RespValue::array(std::move(values));
+}
+
+[[nodiscard]] RespValue info(const std::vector<std::string>&, CommandContext& context) {
+    if (context.stats == nullptr) {
+        return RespValue::bulk(std::string{});
+    }
+    return RespValue::bulk(context.stats->render_info(
+        context.version, context.tcp_port, context.worker_count, context.store.shard_count()));
 }
 
 [[nodiscard]] std::optional<std::vector<std::string>> extract_arguments(const RespValue& request) {
@@ -161,9 +167,10 @@ Registry::Registry() {
     add("EXPIRE", 3, 3, CommandAccess::write, expire);
     add("TTL", 2, 2, CommandAccess::read_only, ttl);
     add("KEYS", 2, 2, CommandAccess::read_only, keys);
+    add("INFO", 1, 2, CommandAccess::read_only, info);
 }
 
-RespValue Registry::execute(const RespValue& request, store::Store& store) const {
+RespValue Registry::execute(const RespValue& request, CommandContext& context) const {
     const std::optional<Arguments> arguments = extract_arguments(request);
     if (!arguments.has_value()) {
         return RespValue::error("ERR Protocol error");
@@ -177,11 +184,16 @@ RespValue Registry::execute(const RespValue& request, store::Store& store) const
     if (arguments->size() < metadata.minimum_arity || arguments->size() > metadata.maximum_arity) {
         return RespValue::error(std::string{wrong_arity});
     }
-    return iterator->second.handler(*arguments, store);
+    return iterator->second.handler(*arguments, context);
 }
 
-RespValue Registry::dispatch(const RespValue& request, store::Store& store) const {
-    return execute(request, store);
+RespValue Registry::execute(const RespValue& request, store::Store& store) const {
+    CommandContext context{.store = store};
+    return execute(request, context);
+}
+
+RespValue Registry::dispatch(const RespValue& request, CommandContext& context) const {
+    return execute(request, context);
 }
 
 const CommandMetadata* Registry::metadata(const std::string_view name) const {

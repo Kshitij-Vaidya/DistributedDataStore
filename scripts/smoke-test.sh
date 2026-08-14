@@ -51,4 +51,6 @@ fi
 [[ "$("${binary_dir}/novacache-cli" -p "${port}" GET smoke)" == "value" ]]
 [[ "$("${binary_dir}/novacache-cli" -p "${port}" DEL smoke)" == "1" ]]
 
-echo "Step 1 smoke test passed (${preset}, port ${port})."
+[[ "$("${binary_dir}/novacache-cli" -p "${port}" INFO)" == *"total_commands_processed:"* ]]
+
+echo "Phase 2 smoke test passed (${preset}, port ${port})."

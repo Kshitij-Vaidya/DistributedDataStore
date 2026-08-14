@@ -30,11 +30,14 @@ endfunction()
 add_library(
     novacache_core
     src/commands/registry.cpp
+    src/net/reactor.cpp
     src/net/socket.cpp
     src/protocol/encoder.cpp
     src/protocol/parser.cpp
     src/server/server.cpp
+    src/server/stats.cpp
     src/store/store.cpp
+    src/util/thread_pool.cpp
     src/version.cpp
 )
 add_library(NovaCache::core ALIAS novacache_core)
@@ -73,6 +76,7 @@ if(BUILD_TESTING)
 
     add_executable(
         novacache-tests
+        tests/concurrency/store_concurrency_test.cpp
         tests/integration/server_test.cpp
         tests/unit/expiry_test.cpp
         tests/unit/protocol_test.cpp

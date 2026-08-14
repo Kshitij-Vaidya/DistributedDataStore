@@ -5,11 +5,12 @@ project is being built in independently testable phases to explore RESP2
 parsing, POSIX networking, portable event loops, concurrency, persistence,
 advanced data structures, pub/sub, and leader-replica replication.
 
-> **Current status: Phase 0 foundation.** The library, application targets,
-> tests, sanitizer presets, documentation, and CI are present. The executable
-> stubs only support `--version`; they do not accept network connections yet.
+> **Current status: Phase 2 concurrency.** NovaCache serves many RESP2 clients
+> through a portable epoll/kqueue reactor, a bounded worker pool with
+> per-connection command strands, and a sharded store protected by
+> `shared_mutex`. Persistence arrives in Phase 3.
 
-## Planned architecture
+## Architecture
 
 ```text
 TCP clients -> epoll/kqueue reactor -> RESP2 parser -> command dispatcher
@@ -41,18 +42,22 @@ ctest --preset debug --output-on-failure
 ./scripts/smoke-test.sh debug
 ```
 
-Verify the Phase 0 programs:
+Start the server and issue commands:
 
 ```bash
-./build/debug/novacache-server --version
-./build/debug/novacache-cli --version
-./build/debug/novacache-benchmark --version
+./build/debug/novacache-server --host 127.0.0.1 --port 6379 --workers 4
+
+./build/debug/novacache-cli -p 6379 PING
+./build/debug/novacache-cli -p 6379 SET demo value
+./build/debug/novacache-cli -p 6379 GET demo
+./build/debug/novacache-cli -p 6379 INFO
+redis-cli -h 127.0.0.1 -p 6379 PING
 ```
 
-Running an executable without `--version` intentionally fails until its
-functionality is implemented.
+`novacache-cli` is a one-shot client; interactive mode and the benchmark tool
+are deferred to Phase 6.
 
-Other supported presets are:
+Other supported presets:
 
 ```bash
 cmake --preset release
@@ -65,17 +70,17 @@ sanitizers, formatting, and troubleshooting.
 
 ## Protocol scope
 
-NovaCache targets a practical RESP2 subset usable by `redis-cli`. Initial
-commands will be `PING`, `ECHO`, `SET`, `GET`, `DEL`, `EXISTS`, `EXPIRE`,
-`TTL`, and `KEYS`. This is not a claim of complete Redis compatibility.
-Wire types, errors, limits, and TTL semantics are specified in
+NovaCache targets a practical RESP2 subset usable by `redis-cli`. Supported
+commands are `PING`, `ECHO`, `SET`, `GET`, `DEL`, `EXISTS`, `EXPIRE`, `TTL`,
+`KEYS`, and `INFO`. This is not a claim of complete Redis compatibility. Wire
+types, errors, limits, and TTL semantics are specified in
 [docs/PROTOCOL.md](docs/PROTOCOL.md).
 
 ## Roadmap
 
 - [x] Phase 0: specifications, CMake foundation, quality tooling, and CI
-- [ ] Phase 1: RESP2, synchronous server, core store, commands, and TTL
-- [ ] Phase 2: epoll/kqueue reactor, thread pool, sharding, and statistics
+- [x] Phase 1: RESP2, synchronous server, core store, commands, and TTL
+- [x] Phase 2: epoll/kqueue reactor, thread pool, sharding, and statistics
 - [ ] Phase 3: WAL, snapshots, and crash recovery
 - [ ] Phase 4: lists, sets, sorted sets, memory limits, and eviction
 - [ ] Phase 5: pub/sub and leader-replica replication
@@ -87,7 +92,7 @@ Wire types, errors, limits, and TTL semantics are specified in
 - [Architecture](docs/ARCHITECTURE.md)
 - [Protocol](docs/PROTOCOL.md)
 - [Development](docs/DEVELOPMENT.md)
-- [Project brief](problem_statement.md)
+- [Project brief](docs/PROBLEMSTATEMENT.md)
 
 ## License
 

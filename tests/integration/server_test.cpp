@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <exception>
@@ -214,6 +215,65 @@ TEST_F(ServerTest, StopsWhileSessionReceiveIsBlocked) {
     server_.stop();
     thread_.join();
     EXPECT_EQ(server_error_, nullptr);
+}
+
+TEST_F(ServerTest, ServesConcurrentClientsAndPipelines) {
+    constexpr int client_count = 32;
+    constexpr int requests_per_client = 50;
+    std::vector<std::thread> clients;
+    std::atomic_int failures{0};
+    std::atomic_bool start{false};
+
+    for (int index = 0; index < client_count; ++index) {
+        clients.emplace_back([&, index] {
+            while (!start.load(std::memory_order_acquire)) {
+            }
+            try {
+                Client client{server_.bound_port()};
+                std::string pipeline;
+                for (int request = 0; request < requests_per_client; ++request) {
+                    const std::string key =
+                        "c" + std::to_string(index) + ":" + std::to_string(request);
+                    pipeline += novacache::protocol::encode(command({"SET", key, "v"}));
+                    pipeline += novacache::protocol::encode(command({"GET", key}));
+                }
+                client.send_bytes(pipeline);
+                for (int request = 0; request < requests_per_client; ++request) {
+                    if (client.receive() != RespValue::simple("OK")) {
+                        failures.fetch_add(1, std::memory_order_relaxed);
+                    }
+                    if (client.receive() != RespValue::bulk(std::string{"v"})) {
+                        failures.fetch_add(1, std::memory_order_relaxed);
+                    }
+                }
+            } catch (...) {
+                failures.fetch_add(1, std::memory_order_relaxed);
+            }
+        });
+    }
+
+    start.store(true, std::memory_order_release);
+    for (std::thread& client : clients) {
+        client.join();
+    }
+    EXPECT_EQ(failures.load(), 0);
+    EXPECT_GE(server_.stats().total_commands(),
+              static_cast<std::uint64_t>(client_count * requests_per_client * 2));
+}
+
+TEST_F(ServerTest, InfoReportsStableStatsText) {
+    Client client{server_.bound_port()};
+    client.send(command({"PING"}));
+    EXPECT_EQ(client.receive(), RespValue::simple("PONG"));
+    client.send(command({"INFO"}));
+    const RespValue info = client.receive();
+    const auto* const bulk = std::get_if<novacache::protocol::BulkString>(&info.storage());
+    ASSERT_NE(bulk, nullptr);
+    ASSERT_TRUE(bulk->value.has_value());
+    EXPECT_NE(bulk->value->find("novacache_version:"), std::string::npos);
+    EXPECT_NE(bulk->value->find("total_commands_processed:"), std::string::npos);
+    EXPECT_NE(bulk->value->find("connected_clients:"), std::string::npos);
+    EXPECT_NE(bulk->value->find("worker_threads:"), std::string::npos);
 }
 
 } // namespace

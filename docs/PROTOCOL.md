@@ -2,9 +2,9 @@
 
 ## Status
 
-This document defines the implemented Phase 1 wire contract. NovaCache accepts
-RESP2 clients on its blocking TCP server; unsupported Redis commands and RESP3
-types are outside the current compatibility scope.
+This document defines the implemented Phase 2 wire contract. NovaCache accepts
+RESP2 clients on its reactor-driven TCP server; unsupported Redis commands and
+RESP3 types are outside the current compatibility scope.
 
 ## Transport and framing
 
@@ -37,7 +37,8 @@ RESP3 types are not supported.
 | `EXISTS key [key ...]` | 2+ | Integer | Counts each supplied key |
 | `EXPIRE key seconds` | 3 | Integer | `1` if set, otherwise `0` |
 | `TTL key` | 2 | Integer | Remaining whole seconds |
-| `KEYS pattern` | 2 | Array | Phase 1 initially guarantees `*` only |
+| `KEYS pattern` | 2 | Array | Currently guarantees `*` only |
+| `INFO [section]` | 1-2 | Bulk String | Stable text stats; section is ignored |
 
 ### Example
 

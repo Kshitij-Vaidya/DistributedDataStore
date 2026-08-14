@@ -2,11 +2,11 @@
 
 ## Current state
 
-Phase 1 implements the RESP2 value model, incremental parser and encoder,
-sharded in-memory store, lazy monotonic TTLs, command registry, RAII POSIX
-sockets, blocking server, and one-shot CLI. The server currently processes one
-connected client at a time. The reactor, worker pool, locks, and active expiry
-shown below are Phase 2 work.
+Phase 2 implements the RESP2 stack on a portable epoll/kqueue reactor with
+non-blocking sockets, connection buffers, a bounded worker pool, per-connection
+command strands (Redis-style ordered execution), per-shard `shared_mutex`
+locking, active expiry sampling, `INFO` stats, and graceful shutdown. WAL and
+snapshots remain Phase 3 work.
 
 ## Component flow
 
@@ -50,11 +50,13 @@ under `src/`.
 
 ## Store and time model
 
-Phase 1 shards already own a fixed partition of the keyspace and lazy expiration
-metadata. Values are type-safe variants for strings, integers, lists, and sets;
-list/set commands arrive later. Runtime expiration decisions use monotonic
-deadlines, and each expiry also records an absolute wall-clock timestamp for
-future snapshot/WAL serialization so expiration remains meaningful after restart.
+Each shard owns its map, lazy/active expiration metadata, approximate memory
+accounting, and a `std::shared_mutex`. Reads take shared locks; mutations and
+lazy deletes take exclusive locks. Multi-key commands lock distinct shards in
+pointer order. `KEYS` snapshots each shard briefly instead of holding every lock
+while encoding. Values are type-safe variants for strings, integers, lists, and
+sets; list/set commands arrive later. Runtime expiration uses monotonic
+deadlines plus absolute wall-clock stamps for future persistence.
 
 ## Mutation ordering
 

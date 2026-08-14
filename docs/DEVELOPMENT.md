@@ -47,7 +47,8 @@ The Phase 1 server can be exercised locally with:
 redis-cli -p 6379 PING
 ```
 
-It is intentionally blocking and single-threaded until the Phase 2 reactor.
+The server is reactor-driven and concurrent. Use `--workers N` to size the pool
+(`0` selects `hardware_concurrency`).
 
 ## Sanitizers
 

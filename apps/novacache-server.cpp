@@ -23,8 +23,19 @@ namespace {
     return static_cast<std::uint16_t>(value);
 }
 
+[[nodiscard]] std::optional<std::size_t> parse_size(const std::string_view text) {
+    std::size_t value = 0;
+    const char* const begin = text.data();
+    const auto result = std::from_chars(begin, begin + text.size(), value);
+    if (text.empty() || result.ec != std::errc{} || result.ptr != begin + text.size()) {
+        return std::nullopt;
+    }
+    return value;
+}
+
 void usage() {
-    std::cerr << "usage: novacache-server [-h host|--host host] [-p port|--port port]\n";
+    std::cerr << "usage: novacache-server [-h host|--host host] [-p port|--port port] "
+                 "[--workers N]\n";
 }
 
 } // namespace
@@ -56,6 +67,19 @@ int main(int argc, char* argv[]) {
                 return 2;
             }
             config.port = *port;
+            continue;
+        }
+        if (argument == "--workers") {
+            if (index + 1 >= argc) {
+                usage();
+                return 2;
+            }
+            const std::optional<std::size_t> workers = parse_size(argv[++index]);
+            if (!workers.has_value()) {
+                std::cerr << "novacache-server: invalid workers\n";
+                return 2;
+            }
+            config.workers = *workers;
             continue;
         }
         usage();
