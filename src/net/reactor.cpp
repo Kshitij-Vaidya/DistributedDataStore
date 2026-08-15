@@ -179,7 +179,7 @@ class KqueueReactor final : public Reactor {
             throw_os_error("kqueue");
         }
 
-        struct kevent change{};
+        struct kevent change;
         EV_SET(&change, wakeup_ident, EVFILT_USER, EV_ADD | EV_CLEAR, 0, 0, nullptr);
         if (::kevent(kq_, &change, 1, nullptr, 0, nullptr) != 0) {
             const int saved = errno;
@@ -272,7 +272,7 @@ class KqueueReactor final : public Reactor {
     }
 
     void wakeup() override {
-        struct kevent change{};
+        struct kevent change;
         EV_SET(&change, wakeup_ident, EVFILT_USER, 0, NOTE_TRIGGER, 0, nullptr);
         if (::kevent(kq_, &change, 1, nullptr, 0, nullptr) != 0) {
             throw_os_error("kevent(NOTE_TRIGGER)");

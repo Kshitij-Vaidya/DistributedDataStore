@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <functional>
 #include <iterator>
+#include <mutex>
 #include <random>
 #include <shared_mutex>
 #include <stdexcept>
