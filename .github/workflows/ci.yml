@@ -10,29 +10,20 @@ permissions:
 
 jobs:
   build-and-test:
-    name: ${{ matrix.os }} debug
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
+    name: macOS debug
+    runs-on: macos-latest
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Ninja on Ubuntu
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
-
-      - name: Install Ninja on macOS
-        if: runner.os == 'macOS'
+      - name: Install Ninja
         run: brew install ninja
 
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
           path: build/debug/_deps
-          key: ${{ runner.os }}-debug-deps-${{ hashFiles('CMakeLists.txt') }}
+          key: macos-debug-deps-${{ hashFiles('CMakeLists.txt') }}
 
       - name: Configure
         run: cmake --preset debug -DNOVACACHE_WARNINGS_AS_ERRORS=ON
@@ -50,22 +41,22 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: test-log-${{ matrix.os }}
+          name: test-log-macos
           path: build/debug/Testing/Temporary/LastTest.log
           if-no-files-found: ignore
 
   asan-ubsan:
-    name: Linux ASan and UBSan
-    runs-on: ubuntu-latest
+    name: macOS ASan and UBSan
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        run: brew install ninja
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
           path: build/asan/_deps
-          key: linux-asan-deps-${{ hashFiles('CMakeLists.txt') }}
+          key: macos-asan-deps-${{ hashFiles('CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset asan -DNOVACACHE_WARNINGS_AS_ERRORS=ON
       - name: Build
@@ -84,17 +75,17 @@ jobs:
           if-no-files-found: ignore
 
   tsan:
-    name: Linux TSan
-    runs-on: ubuntu-latest
+    name: macOS TSan
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install Ninja
-        run: sudo apt-get update && sudo apt-get install -y ninja-build
+        run: brew install ninja
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
           path: build/tsan/_deps
-          key: linux-tsan-deps-${{ hashFiles('CMakeLists.txt') }}
+          key: macos-tsan-deps-${{ hashFiles('CMakeLists.txt') }}
       - name: Configure
         run: cmake --preset tsan -DNOVACACHE_WARNINGS_AS_ERRORS=ON
       - name: Build
@@ -113,10 +104,10 @@ jobs:
 
   formatting:
     name: Formatting
-    runs-on: ubuntu-latest
+    runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - name: Install clang-format
-        run: sudo apt-get update && sudo apt-get install -y clang-format
+        run: brew install clang-format
       - name: Check formatting
         run: ./scripts/check-format.sh

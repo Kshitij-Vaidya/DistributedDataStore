@@ -9,16 +9,12 @@
 #include <utility>
 #include <vector>
 
-#if defined(__linux__)
-#include <sys/epoll.h>
-#include <sys/eventfd.h>
-#include <unistd.h>
-#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
 #include <sys/event.h>
 #include <sys/time.h>
 #include <unistd.h>
 #else
-#error "NovaCache requires epoll on Linux or kqueue on BSD/macOS"
+#error "NovaCache requires kqueue on macOS/BSD"
 #endif
 
 namespace novacache::net {
@@ -27,147 +23,6 @@ namespace {
 [[noreturn]] void throw_os_error(const char* operation) {
     throw std::system_error(errno, std::generic_category(), operation);
 }
-
-#if defined(__linux__)
-
-class EpollReactor final : public Reactor {
-  public:
-    EpollReactor() {
-        epoll_fd_ = ::epoll_create1(EPOLL_CLOEXEC);
-        if (epoll_fd_ < 0) {
-            throw_os_error("epoll_create1");
-        }
-        wakeup_fd_ = ::eventfd(0, EFD_NONBLOCK | EFD_CLOEXEC);
-        if (wakeup_fd_ < 0) {
-            const int saved = errno;
-            static_cast<void>(::close(epoll_fd_));
-            throw std::system_error(saved, std::generic_category(), "eventfd");
-        }
-        epoll_event event{};
-        event.events = EPOLLIN;
-        event.data.fd = wakeup_fd_;
-        if (::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, wakeup_fd_, &event) != 0) {
-            const int saved = errno;
-            static_cast<void>(::close(wakeup_fd_));
-            static_cast<void>(::close(epoll_fd_));
-            throw std::system_error(saved, std::generic_category(), "epoll_ctl(wakeup)");
-        }
-    }
-
-    ~EpollReactor() override {
-        if (wakeup_fd_ >= 0) {
-            static_cast<void>(::close(wakeup_fd_));
-        }
-        if (epoll_fd_ >= 0) {
-            static_cast<void>(::close(epoll_fd_));
-        }
-    }
-
-    void add(const int fd, const Interest interest) override {
-        epoll_event event = make_event(fd, interest);
-        if (::epoll_ctl(epoll_fd_, EPOLL_CTL_ADD, fd, &event) != 0) {
-            throw_os_error("epoll_ctl(ADD)");
-        }
-    }
-
-    void modify(const int fd, const Interest interest) override {
-        epoll_event event = make_event(fd, interest);
-        if (::epoll_ctl(epoll_fd_, EPOLL_CTL_MOD, fd, &event) != 0) {
-            throw_os_error("epoll_ctl(MOD)");
-        }
-    }
-
-    void remove(const int fd) override {
-        if (::epoll_ctl(epoll_fd_, EPOLL_CTL_DEL, fd, nullptr) != 0 && errno != ENOENT) {
-            throw_os_error("epoll_ctl(DEL)");
-        }
-    }
-
-    std::size_t wait(const std::span<FiredEvent> out,
-                     const std::optional<std::chrono::milliseconds> timeout) override {
-        if (out.empty()) {
-            return 0;
-        }
-        std::vector<epoll_event> events(out.size());
-        int timeout_ms = -1;
-        if (timeout.has_value()) {
-            timeout_ms = static_cast<int>(
-                std::min<std::chrono::milliseconds::rep>(timeout->count(), 2'147'483'647));
-        }
-
-        int ready = 0;
-        for (;;) {
-            ready =
-                ::epoll_wait(epoll_fd_, events.data(), static_cast<int>(events.size()), timeout_ms);
-            if (ready >= 0) {
-                break;
-            }
-            if (errno != EINTR) {
-                throw_os_error("epoll_wait");
-            }
-        }
-
-        std::size_t produced = 0;
-        for (int index = 0; index < ready; ++index) {
-            const epoll_event& event = events[static_cast<std::size_t>(index)];
-            if (event.data.fd == wakeup_fd_) {
-                drain_wakeup();
-                continue;
-            }
-            FiredEvent& fired = out[produced++];
-            fired.fd = event.data.fd;
-            fired.ready = Interest::none;
-            if ((event.events & EPOLLIN) != 0U) {
-                fired.ready |= Interest::read;
-            }
-            if ((event.events & EPOLLOUT) != 0U) {
-                fired.ready |= Interest::write;
-            }
-            fired.error = (event.events & EPOLLERR) != 0U;
-            fired.hangup = (event.events & EPOLLHUP) != 0U;
-        }
-        return produced;
-    }
-
-    void wakeup() override {
-        constexpr std::uint64_t one = 1;
-        for (;;) {
-            const ssize_t written = ::write(wakeup_fd_, &one, sizeof(one));
-            if (written == static_cast<ssize_t>(sizeof(one)) || (written < 0 && errno == EAGAIN)) {
-                return;
-            }
-            if (written < 0 && errno == EINTR) {
-                continue;
-            }
-            throw_os_error("eventfd write");
-        }
-    }
-
-  private:
-    [[nodiscard]] static epoll_event make_event(const int fd, const Interest interest) {
-        epoll_event event{};
-        event.data.fd = fd;
-        event.events = EPOLLET;
-        if (has_interest(interest, Interest::read)) {
-            event.events |= EPOLLIN;
-        }
-        if (has_interest(interest, Interest::write)) {
-            event.events |= EPOLLOUT;
-        }
-        return event;
-    }
-
-    void drain_wakeup() const {
-        std::uint64_t value = 0;
-        while (::read(wakeup_fd_, &value, sizeof(value)) > 0) {
-        }
-    }
-
-    int epoll_fd_ = -1;
-    int wakeup_fd_ = -1;
-};
-
-#else
 
 class KqueueReactor final : public Reactor {
   public:
@@ -313,16 +168,8 @@ class KqueueReactor final : public Reactor {
     std::unordered_map<int, Interest> registered_;
 };
 
-#endif
-
 } // namespace
 
-std::unique_ptr<Reactor> create_reactor() {
-#if defined(__linux__)
-    return std::make_unique<EpollReactor>();
-#else
-    return std::make_unique<KqueueReactor>();
-#endif
-}
+std::unique_ptr<Reactor> create_reactor() { return std::make_unique<KqueueReactor>(); }
 
 } // namespace novacache::net

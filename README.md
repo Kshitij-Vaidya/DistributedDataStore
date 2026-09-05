@@ -6,32 +6,31 @@ parsing, POSIX networking, portable event loops, concurrency, persistence,
 advanced data structures, pub/sub, and leader-replica replication.
 
 > **Current status: Phase 3 persistence.** NovaCache serves many RESP2 clients
-> through a portable epoll/kqueue reactor, a bounded worker pool with
-> per-connection command strands, and a sharded store. Optional WAL + snapshot
-> durability recovers acknowledged writes after restart or crash under
-> `fsync=always`.
+> through a kqueue-based reactor, a bounded worker pool with per-connection
+> command strands, and a sharded store. Optional WAL + snapshot durability
+> recovers acknowledged writes after restart or crash under `fsync=always`.
 
 ## Architecture
 
 ```text
-TCP clients -> epoll/kqueue reactor -> RESP2 parser -> command dispatcher
-                                                     |
-                                                worker pool
-                                                     |
-                          sharded store <-> WAL/snapshots -> replicas
-                                                     |
-                                                   pub/sub
+TCP clients -> kqueue reactor -> RESP2 parser -> command dispatcher
+                                              |
+                                         worker pool
+                                              |
+                   sharded store <-> WAL/snapshots -> replicas
+                                              |
+                                            pub/sub
 ```
 
-Linux uses epoll; macOS uses kqueue behind one reactor interface. See
-[the architecture specification](docs/ARCHITECTURE.md) for ownership and
+See [the architecture specification](docs/ARCHITECTURE.md) for ownership and
 ordering rules.
 
 ## Requirements
 
+- macOS
 - CMake 3.24+
 - Ninja
-- A C++20 compiler (Apple Clang, Clang, or GCC)
+- A C++20 compiler (Apple Clang or Clang)
 - Git and network access during first configuration
 
 ## Build and test
@@ -85,7 +84,7 @@ types, errors, limits, and TTL semantics are specified in
 
 - [x] Phase 0: specifications, CMake foundation, quality tooling, and CI
 - [x] Phase 1: RESP2, synchronous server, core store, commands, and TTL
-- [x] Phase 2: epoll/kqueue reactor, thread pool, sharding, and statistics
+- [x] Phase 2: kqueue reactor, thread pool, sharding, and statistics
 - [x] Phase 3: WAL, snapshots, and crash recovery
 - [ ] Phase 4: lists, sets, sorted sets, memory limits, and eviction
 - [ ] Phase 5: pub/sub and leader-replica replication

@@ -32,9 +32,9 @@ struct PersistenceConfig {
 
 class PersistenceEngine {
   public:
-    explicit PersistenceEngine(PersistenceConfig config,
-                               std::shared_ptr<const store::Clock> clock =
-                                   std::make_shared<store::SystemClock>());
+    explicit PersistenceEngine(
+        PersistenceConfig config,
+        std::shared_ptr<const store::Clock> clock = std::make_shared<store::SystemClock>());
     ~PersistenceEngine();
 
     PersistenceEngine(const PersistenceEngine&) = delete;

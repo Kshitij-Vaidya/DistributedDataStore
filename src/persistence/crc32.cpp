@@ -41,8 +41,8 @@ std::uint32_t crc32(const std::span<const std::byte> data) noexcept {
 }
 
 std::uint32_t crc32(const std::string_view data) noexcept {
-    return crc32(std::span<const std::byte>(reinterpret_cast<const std::byte*>(data.data()),
-                                            data.size()));
+    return crc32(
+        std::span<const std::byte>(reinterpret_cast<const std::byte*>(data.data()), data.size()));
 }
 
 } // namespace novacache::persistence

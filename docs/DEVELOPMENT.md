@@ -8,18 +8,11 @@
 - Git and network access during the first configure for GoogleTest
 - Optional: clang-format and clang-tidy
 
-On macOS, install the command-line tools and dependencies:
+Install the command-line tools and dependencies:
 
 ```bash
 xcode-select --install
 brew install cmake ninja llvm
-```
-
-On Ubuntu:
-
-```bash
-sudo apt-get update
-sudo apt-get install -y build-essential cmake ninja-build clang clang-format clang-tidy
 ```
 
 ## Build and test
@@ -63,8 +56,8 @@ ctest --preset tsan --output-on-failure
 ```
 
 ASan includes UndefinedBehaviorSanitizer. TSan is separate because it is
-incompatible with ASan and is primarily validated in Linux CI. The convenience
-script `./scripts/run-sanitizers.sh` runs both supported suites.
+incompatible with ASan. The convenience script `./scripts/run-sanitizers.sh`
+runs both suites.
 
 ## Formatting and static analysis
 

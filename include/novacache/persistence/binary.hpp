@@ -66,10 +66,9 @@ inline void append_bytes(std::string& out, const std::string_view value) {
     if (input.size() < 2U) {
         throw std::runtime_error("truncated input while reading u16");
     }
-    const auto value = static_cast<std::uint16_t>(static_cast<std::uint8_t>(input[0]) |
-                                                  (static_cast<std::uint16_t>(
-                                                       static_cast<std::uint8_t>(input[1]))
-                                                   << 8U));
+    const auto value = static_cast<std::uint16_t>(
+        static_cast<std::uint8_t>(input[0]) |
+        (static_cast<std::uint16_t>(static_cast<std::uint8_t>(input[1])) << 8U));
     input.remove_prefix(2);
     return value;
 }
@@ -92,7 +91,8 @@ inline void append_bytes(std::string& out, const std::string_view value) {
     }
     std::uint64_t value = 0;
     for (int index = 0; index < 8; ++index) {
-        value |= static_cast<std::uint64_t>(static_cast<std::uint8_t>(input[static_cast<std::size_t>(index)]))
+        value |= static_cast<std::uint64_t>(
+                     static_cast<std::uint8_t>(input[static_cast<std::size_t>(index)]))
                  << (8 * index);
     }
     input.remove_prefix(8);

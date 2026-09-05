@@ -40,8 +40,8 @@ void write_all(const int fd, const std::string_view bytes) {
 }
 
 void fsync_parent_directory(const std::filesystem::path& path) {
-    const auto parent = path.parent_path().empty() ? std::filesystem::path{"."}
-                                                   : path.parent_path();
+    const auto parent =
+        path.parent_path().empty() ? std::filesystem::path{"."} : path.parent_path();
     const int dir_fd = ::open(parent.c_str(), O_RDONLY | O_DIRECTORY);
     if (dir_fd < 0) {
         return;

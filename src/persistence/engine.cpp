@@ -36,9 +36,7 @@ PersistenceEngine::PersistenceEngine(PersistenceConfig config,
     }
 }
 
-PersistenceEngine::~PersistenceEngine() {
-    stop_fsync_thread();
-}
+PersistenceEngine::~PersistenceEngine() { stop_fsync_thread(); }
 
 void PersistenceEngine::recover_into(store::Store& store) {
     const std::lock_guard lock{mutex_};
@@ -167,9 +165,8 @@ void PersistenceEngine::start_fsync_thread() {
         while (!stopping_.load(std::memory_order_acquire)) {
             {
                 std::unique_lock lock{mutex_};
-                fsync_cv_.wait_for(lock, std::chrono::seconds{1}, [this] {
-                    return stopping_.load(std::memory_order_acquire);
-                });
+                fsync_cv_.wait_for(lock, std::chrono::seconds{1},
+                                   [this] { return stopping_.load(std::memory_order_acquire); });
                 if (stopping_.load(std::memory_order_acquire)) {
                     break;
                 }

@@ -24,7 +24,8 @@ class SnapshotStore {
     static void write(std::string_view path, std::uint64_t wal_offset,
                       const std::vector<store::PersistedEntry>& entries);
 
-    [[nodiscard]] static std::optional<std::pair<SnapshotHeader, std::vector<store::PersistedEntry>>>
+    [[nodiscard]] static std::optional<
+        std::pair<SnapshotHeader, std::vector<store::PersistedEntry>>>
     read(std::string_view path);
 };
 

@@ -45,20 +45,19 @@ namespace {
 Server::Server(ServerConfig config)
     : config_(std::move(config)),
       listener_(net::Socket::listen(config_.host, config_.port, config_.backlog)),
-      bound_port_(listener_.local_port()),
-      reactor_(net::create_reactor()),
-      store_(config_.shards),
+      bound_port_(listener_.local_port()), reactor_(net::create_reactor()), store_(config_.shards),
       workers_(std::make_unique<util::ThreadPool>(default_worker_count(config_.workers),
                                                   config_.worker_queue_limit)) {
     if (config_.persistence_enabled) {
         if (config_.data_dir.empty()) {
             throw std::invalid_argument("persistence requires --data-dir");
         }
-        persistence_ = std::make_unique<persistence::PersistenceEngine>(persistence::PersistenceConfig{
-            .data_dir = config_.data_dir,
-            .fsync = config_.fsync,
-            .snapshot_interval_seconds = config_.snapshot_interval_seconds,
-        });
+        persistence_ =
+            std::make_unique<persistence::PersistenceEngine>(persistence::PersistenceConfig{
+                .data_dir = config_.data_dir,
+                .fsync = config_.fsync,
+                .snapshot_interval_seconds = config_.snapshot_interval_seconds,
+            });
         persistence_->recover_into(store_);
     }
     listener_.set_nonblocking(true);

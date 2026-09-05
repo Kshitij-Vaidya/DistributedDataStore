@@ -92,8 +92,7 @@ std::vector<WalRecord> WalWriter::open_and_recover() {
     std::string file(static_cast<std::size_t>(size), '\0');
     std::size_t read_total = 0;
     while (read_total < file.size()) {
-        const ssize_t got =
-            ::read(fd_, file.data() + read_total, file.size() - read_total);
+        const ssize_t got = ::read(fd_, file.data() + read_total, file.size() - read_total);
         if (got < 0) {
             if (errno == EINTR) {
                 continue;

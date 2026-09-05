@@ -12,7 +12,7 @@ records. Persistence stays off unless `--data-dir` is configured.
 ```text
 RESP2 client
     |
-portable reactor (epoll on Linux, kqueue on macOS)
+kqueue reactor (macOS)
     |
 connection buffers -> incremental RESP2 parser -> command registry
                                                 |
@@ -72,15 +72,14 @@ Acknowledgment guarantees per fsync mode are defined in
 
 ## Platform boundary
 
-The public reactor abstraction is platform-neutral:
+NovaCache targets macOS only. The reactor is implemented with:
 
 ```text
-Linux: epoll + eventfd
-macOS: kqueue + EVFILT_USER (or a non-blocking wakeup pipe)
+kqueue + EVFILT_USER
 ```
 
 Platform headers and behavior stay in implementation files so store, protocol,
-and command code remain portable.
+and command code remain isolated from the reactor's OS-level details.
 
 ## Test boundaries
 

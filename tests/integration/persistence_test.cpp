@@ -171,7 +171,8 @@ TEST(PersistenceEngineTest, InvalidSnapshotFallsBackToWal) {
     }
 
     {
-        std::ofstream out{(directory.path() / "dump.ncs").string(), std::ios::binary | std::ios::trunc};
+        std::ofstream out{(directory.path() / "dump.ncs").string(),
+                          std::ios::binary | std::ios::trunc};
         out << "not-a-snapshot";
     }
 

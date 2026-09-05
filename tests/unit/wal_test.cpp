@@ -58,9 +58,9 @@ TEST_F(WalTest, TruncatesCorruptIncompleteTail) {
     {
         novacache::persistence::WalWriter writer{path_};
         ASSERT_TRUE(writer.open_and_recover().empty());
-        static_cast<void>(writer.append(novacache::persistence::WalOpcode::set,
-                                        novacache::persistence::encode_set_payload(
-                                            "keep", "value", std::nullopt)));
+        static_cast<void>(writer.append(
+            novacache::persistence::WalOpcode::set,
+            novacache::persistence::encode_set_payload("keep", "value", std::nullopt)));
         writer.sync();
     }
 

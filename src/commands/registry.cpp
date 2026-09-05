@@ -116,11 +116,10 @@ constexpr std::string_view wrong_type =
     if (!seconds.has_value() || !expiration_is_representable(*seconds)) {
         return RespValue::error(std::string{invalid_integer});
     }
-    const bool changed =
-        context.persistence != nullptr
-            ? context.persistence->durable_expire(context.store, arguments[1],
-                                                  std::chrono::seconds{*seconds})
-            : context.store.expire(arguments[1], std::chrono::seconds{*seconds});
+    const bool changed = context.persistence != nullptr
+                             ? context.persistence->durable_expire(context.store, arguments[1],
+                                                                   std::chrono::seconds{*seconds})
+                             : context.store.expire(arguments[1], std::chrono::seconds{*seconds});
     return RespValue::integer(changed ? 1 : 0);
 }
 
