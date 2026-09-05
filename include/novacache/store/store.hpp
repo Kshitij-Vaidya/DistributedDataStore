@@ -27,6 +27,12 @@ struct KeysResult {
     std::vector<std::string> keys;
 };
 
+struct PersistedEntry {
+    std::string key;
+    Value value;
+    std::optional<Clock::wall_time_point> expiry_wall;
+};
+
 class Store {
   public:
     static constexpr std::size_t default_shard_count = 16;
@@ -35,12 +41,15 @@ class Store {
                    std::shared_ptr<const Clock> clock = std::make_shared<SystemClock>());
 
     void set(std::string key, Value value);
+    void set(std::string key, Value value, std::optional<Clock::wall_time_point> expiry_wall);
     [[nodiscard]] std::optional<Value> get(std::string_view key);
     [[nodiscard]] bool del(std::string_view key);
     [[nodiscard]] std::size_t del_many(const std::vector<std::string_view>& keys);
     [[nodiscard]] bool exists(std::string_view key);
     [[nodiscard]] std::size_t exists_many(const std::vector<std::string_view>& keys);
     [[nodiscard]] bool expire(std::string_view key, std::chrono::seconds ttl);
+    [[nodiscard]] bool expire_at(std::string_view key,
+                                 std::optional<Clock::wall_time_point> expiry_wall);
     [[nodiscard]] std::int64_t ttl(std::string_view key);
     [[nodiscard]] KeysResult keys(std::string_view pattern);
 
@@ -49,6 +58,10 @@ class Store {
 
     // Samples up to `samples_per_shard` random entries per shard and erases expired keys.
     [[nodiscard]] std::size_t active_expire_cycle(std::size_t samples_per_shard);
+
+    [[nodiscard]] std::vector<PersistedEntry> export_snapshot_entries();
+    void clear();
+    void import_snapshot_entry(PersistedEntry entry);
 
     [[nodiscard]] std::size_t shard_count() const noexcept;
     [[nodiscard]] std::uint64_t approximate_memory() const noexcept;

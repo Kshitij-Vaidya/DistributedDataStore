@@ -6,6 +6,7 @@
 #include <exception>
 #include <functional>
 #include <optional>
+#include <stdexcept>
 #include <thread>
 #include <utility>
 #include <variant>
@@ -44,15 +45,37 @@ namespace {
 Server::Server(ServerConfig config)
     : config_(std::move(config)),
       listener_(net::Socket::listen(config_.host, config_.port, config_.backlog)),
-      bound_port_(listener_.local_port()), reactor_(net::create_reactor()), store_(config_.shards),
+      bound_port_(listener_.local_port()),
+      reactor_(net::create_reactor()),
+      store_(config_.shards),
       workers_(std::make_unique<util::ThreadPool>(default_worker_count(config_.workers),
                                                   config_.worker_queue_limit)) {
+    if (config_.persistence_enabled) {
+        if (config_.data_dir.empty()) {
+            throw std::invalid_argument("persistence requires --data-dir");
+        }
+        persistence_ = std::make_unique<persistence::PersistenceEngine>(persistence::PersistenceConfig{
+            .data_dir = config_.data_dir,
+            .fsync = config_.fsync,
+            .snapshot_interval_seconds = config_.snapshot_interval_seconds,
+        });
+        persistence_->recover_into(store_);
+    }
     listener_.set_nonblocking(true);
     reactor_->add(listener_.native_handle(), net::Interest::read);
     next_expiry_tick_ = std::chrono::steady_clock::now();
 }
 
-Server::~Server() { stop(); }
+Server::~Server() {
+    stop();
+    if (persistence_ != nullptr) {
+        try {
+            persistence_->shutdown(store_);
+        } catch (...) {
+        }
+        persistence_.reset();
+    }
+}
 
 void Server::run() {
     std::array<net::FiredEvent, 64> events{};
@@ -85,6 +108,12 @@ void Server::run() {
         drain_completions();
         run_active_expiry();
         close_idle_connections();
+        if (persistence_ != nullptr) {
+            try {
+                persistence_->maybe_snapshot(store_);
+            } catch (...) {
+            }
+        }
         stats_.set_used_memory(store_.approximate_memory());
     }
 
@@ -275,6 +304,7 @@ void Server::launch_strand(Connection& connection) {
         commands::CommandContext context{
             .store = store_,
             .stats = &stats_,
+            .persistence = persistence_.get(),
             .version = novacache::version(),
             .tcp_port = bound_port_,
             .worker_count = worker_count(),

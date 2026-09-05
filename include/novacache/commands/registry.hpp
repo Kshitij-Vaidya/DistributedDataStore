@@ -12,6 +12,10 @@
 #include <unordered_map>
 #include <vector>
 
+namespace novacache::persistence {
+class PersistenceEngine;
+}
+
 namespace novacache::commands {
 
 enum class CommandAccess {
@@ -31,6 +35,7 @@ struct CommandMetadata {
 struct CommandContext {
     store::Store& store;
     server::Stats* stats = nullptr;
+    persistence::PersistenceEngine* persistence = nullptr;
     std::string_view version = "0.1.0";
     std::uint16_t tcp_port = 0;
     std::size_t worker_count = 0;

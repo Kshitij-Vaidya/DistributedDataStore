@@ -32,6 +32,10 @@ add_library(
     src/commands/registry.cpp
     src/net/reactor.cpp
     src/net/socket.cpp
+    src/persistence/crc32.cpp
+    src/persistence/engine.cpp
+    src/persistence/snapshot.cpp
+    src/persistence/wal.cpp
     src/protocol/encoder.cpp
     src/protocol/parser.cpp
     src/server/server.cpp
@@ -77,11 +81,14 @@ if(BUILD_TESTING)
     add_executable(
         novacache-tests
         tests/concurrency/store_concurrency_test.cpp
+        tests/integration/persistence_test.cpp
         tests/integration/server_test.cpp
         tests/unit/expiry_test.cpp
         tests/unit/protocol_test.cpp
+        tests/unit/snapshot_test.cpp
         tests/unit/store_test.cpp
         tests/unit/version_test.cpp
+        tests/unit/wal_test.cpp
     )
     target_link_libraries(
         novacache-tests

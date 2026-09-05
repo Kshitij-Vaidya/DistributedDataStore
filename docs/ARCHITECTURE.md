@@ -2,11 +2,10 @@
 
 ## Current state
 
-Phase 2 implements the RESP2 stack on a portable epoll/kqueue reactor with
-non-blocking sockets, connection buffers, a bounded worker pool, per-connection
-command strands (Redis-style ordered execution), per-shard `shared_mutex`
-locking, active expiry sampling, `INFO` stats, and graceful shutdown. WAL and
-snapshots remain Phase 3 work.
+Phase 3 builds on the Phase 2 concurrent server with optional durability: a
+versioned write-ahead log, atomic snapshots, fsync modes (`always` /
+`everysec` / `none`), and recovery that loads a snapshot then replays later WAL
+records. Persistence stays off unless `--data-dir` is configured.
 
 ## Component flow
 
@@ -27,8 +26,8 @@ connection buffers -> incremental RESP2 parser -> command registry
 ```
 
 The shared `novacache_core` library contains protocol, store, command, socket,
-and server behavior. Thin programs under `apps/` provide the server, CLI, and
-benchmark entry points.
+persistence, and server behavior. Thin programs under `apps/` provide the
+server, CLI, and benchmark entry points.
 Public interfaces live under `include/novacache/`; implementation details live
 under `src/`.
 
@@ -56,19 +55,20 @@ lazy deletes take exclusive locks. Multi-key commands lock distinct shards in
 pointer order. `KEYS` snapshots each shard briefly instead of holding every lock
 while encoding. Values are type-safe variants for strings, integers, lists, and
 sets; list/set commands arrive later. Runtime expiration uses monotonic
-deadlines plus absolute wall-clock stamps for future persistence.
+deadlines plus absolute wall-clock stamps serialized into WAL/snapshot records.
 
 ## Mutation ordering
 
-Every mutating command will follow one ordered path:
+When persistence is enabled, mutating commands follow one ordered path:
 
 ```text
 validate -> order/encode WAL record -> durability action -> apply mutation
-         -> publish replication record -> form response
+         -> form response
 ```
 
-This common path ensures crash recovery and replicas observe the same mutation
-order. Exact acknowledgment guarantees will be documented for each fsync mode.
+Replication publish remains a Phase 5 hook on the same ordering spine.
+Acknowledgment guarantees per fsync mode are defined in
+[PERSISTENCE.md](PERSISTENCE.md).
 
 ## Platform boundary
 
@@ -84,9 +84,10 @@ and command code remain portable.
 
 ## Test boundaries
 
-- Unit tests cover protocol, store, data structures, configuration, and disk
-  codecs.
-- Integration tests launch real servers on ephemeral ports.
+- Unit tests cover protocol, store, data structures, configuration, WAL, and
+  snapshot codecs.
+- Integration tests launch real servers on ephemeral ports and exercise
+  graceful restart plus crash-style recovery under `fsync=always`.
 - ThreadSanitizer validates concurrent components.
 - Fuzz targets exercise all untrusted decoders.
 - Tests use readiness signals and bounded deadlines instead of timing-only

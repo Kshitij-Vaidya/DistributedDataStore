@@ -78,20 +78,42 @@ bool Store::erase_expired_locked(Shard& shard,
 }
 
 void Store::set(std::string key, Value value) {
+    set(std::move(key), std::move(value), std::nullopt);
+}
+
+void Store::set(std::string key, Value value,
+                const std::optional<Clock::wall_time_point> expiry_wall) {
     Shard& shard = shard_for(key);
     const std::size_t bytes = estimate_bytes(key, value);
     const std::unique_lock lock{shard.mutex};
     const auto now = clock_->now();
+    const auto wall_now = clock_->wall_now();
+
+    std::optional<Clock::time_point> expires_at;
+    std::optional<Clock::wall_time_point> wall = expiry_wall;
+    if (wall.has_value()) {
+        if (*wall <= wall_now) {
+            const auto iterator = shard.entries.find(key);
+            if (iterator != shard.entries.end()) {
+                approximate_memory_.fetch_sub(iterator->second.stored_bytes,
+                                              std::memory_order_relaxed);
+                shard.entries.erase(iterator);
+                expired_keys_.fetch_add(1, std::memory_order_relaxed);
+            }
+            return;
+        }
+        expires_at = now + (*wall - wall_now);
+    }
+
     const auto iterator = shard.entries.find(key);
     if (iterator != shard.entries.end()) {
         if (is_expired(iterator->second, now)) {
             expired_keys_.fetch_add(1, std::memory_order_relaxed);
         }
         approximate_memory_.fetch_sub(iterator->second.stored_bytes, std::memory_order_relaxed);
-        iterator->second = Entry{std::move(value), std::nullopt, std::nullopt, bytes};
+        iterator->second = Entry{std::move(value), expires_at, wall, bytes};
     } else {
-        shard.entries.emplace(std::move(key),
-                              Entry{std::move(value), std::nullopt, std::nullopt, bytes});
+        shard.entries.emplace(std::move(key), Entry{std::move(value), expires_at, wall, bytes});
     }
     approximate_memory_.fetch_add(bytes, std::memory_order_relaxed);
 }
@@ -212,6 +234,14 @@ std::size_t Store::exists_many(const std::vector<std::string_view>& keys) {
 }
 
 bool Store::expire(const std::string_view key, const std::chrono::seconds ttl) {
+    if (ttl <= std::chrono::seconds::zero()) {
+        return expire_at(key, clock_->wall_now());
+    }
+    return expire_at(key, clock_->wall_now() + ttl);
+}
+
+bool Store::expire_at(const std::string_view key,
+                      const std::optional<Clock::wall_time_point> expiry_wall) {
     Shard& shard = shard_for(key);
     const std::unique_lock lock{shard.mutex};
     const auto iterator = shard.entries.find(std::string{key});
@@ -221,14 +251,15 @@ bool Store::expire(const std::string_view key, const std::chrono::seconds ttl) {
     if (erase_expired_locked(shard, iterator, clock_->now())) {
         return false;
     }
-    if (ttl <= std::chrono::seconds::zero()) {
+
+    if (!expiry_wall.has_value() || *expiry_wall <= clock_->wall_now()) {
         approximate_memory_.fetch_sub(iterator->second.stored_bytes, std::memory_order_relaxed);
         shard.entries.erase(iterator);
         return true;
     }
 
-    iterator->second.expires_at = clock_->now() + ttl;
-    iterator->second.expires_at_wall = clock_->wall_now() + ttl;
+    iterator->second.expires_at_wall = expiry_wall;
+    iterator->second.expires_at = clock_->now() + (*expiry_wall - clock_->wall_now());
     return true;
 }
 
@@ -346,6 +377,39 @@ std::size_t Store::active_expire_cycle(const std::size_t samples_per_shard) {
         }
     }
     return expired;
+}
+
+std::vector<PersistedEntry> Store::export_snapshot_entries() {
+    std::vector<PersistedEntry> entries;
+    const auto now = clock_->now();
+    for (Shard& shard : shards_) {
+        const std::unique_lock lock{shard.mutex};
+        for (auto iterator = shard.entries.begin(); iterator != shard.entries.end();) {
+            if (is_expired(iterator->second, now)) {
+                approximate_memory_.fetch_sub(iterator->second.stored_bytes,
+                                              std::memory_order_relaxed);
+                iterator = shard.entries.erase(iterator);
+                expired_keys_.fetch_add(1, std::memory_order_relaxed);
+                continue;
+            }
+            entries.push_back(PersistedEntry{iterator->first, iterator->second.value,
+                                             iterator->second.expires_at_wall});
+            ++iterator;
+        }
+    }
+    return entries;
+}
+
+void Store::clear() {
+    for (Shard& shard : shards_) {
+        const std::unique_lock lock{shard.mutex};
+        shard.entries.clear();
+    }
+    approximate_memory_.store(0, std::memory_order_relaxed);
+}
+
+void Store::import_snapshot_entry(PersistedEntry entry) {
+    set(std::move(entry.key), std::move(entry.value), entry.expiry_wall);
 }
 
 std::size_t Store::shard_count() const noexcept { return shards_.size(); }

@@ -5,10 +5,11 @@ project is being built in independently testable phases to explore RESP2
 parsing, POSIX networking, portable event loops, concurrency, persistence,
 advanced data structures, pub/sub, and leader-replica replication.
 
-> **Current status: Phase 2 concurrency.** NovaCache serves many RESP2 clients
+> **Current status: Phase 3 persistence.** NovaCache serves many RESP2 clients
 > through a portable epoll/kqueue reactor, a bounded worker pool with
-> per-connection command strands, and a sharded store protected by
-> `shared_mutex`. Persistence arrives in Phase 3.
+> per-connection command strands, and a sharded store. Optional WAL + snapshot
+> durability recovers acknowledged writes after restart or crash under
+> `fsync=always`.
 
 ## Architecture
 
@@ -45,7 +46,8 @@ ctest --preset debug --output-on-failure
 Start the server and issue commands:
 
 ```bash
-./build/debug/novacache-server --host 127.0.0.1 --port 6379 --workers 4
+./build/debug/novacache-server --host 127.0.0.1 --port 6379 --workers 4 \
+  --data-dir /tmp/novacache-data --fsync everysec --snapshot-interval 300
 
 ./build/debug/novacache-cli -p 6379 PING
 ./build/debug/novacache-cli -p 6379 SET demo value
@@ -53,6 +55,9 @@ Start the server and issue commands:
 ./build/debug/novacache-cli -p 6379 INFO
 redis-cli -h 127.0.0.1 -p 6379 PING
 ```
+
+Omit `--data-dir` to run without persistence. Durability modes and on-disk
+formats are documented in [docs/PERSISTENCE.md](docs/PERSISTENCE.md).
 
 `novacache-cli` is a one-shot client; interactive mode and the benchmark tool
 are deferred to Phase 6.
@@ -81,7 +86,7 @@ types, errors, limits, and TTL semantics are specified in
 - [x] Phase 0: specifications, CMake foundation, quality tooling, and CI
 - [x] Phase 1: RESP2, synchronous server, core store, commands, and TTL
 - [x] Phase 2: epoll/kqueue reactor, thread pool, sharding, and statistics
-- [ ] Phase 3: WAL, snapshots, and crash recovery
+- [x] Phase 3: WAL, snapshots, and crash recovery
 - [ ] Phase 4: lists, sets, sorted sets, memory limits, and eviction
 - [ ] Phase 5: pub/sub and leader-replica replication
 - [ ] Phase 6: complete CLI, configuration, logging, auth, and benchmarks
@@ -91,6 +96,7 @@ types, errors, limits, and TTL semantics are specified in
 
 - [Architecture](docs/ARCHITECTURE.md)
 - [Protocol](docs/PROTOCOL.md)
+- [Persistence](docs/PERSISTENCE.md)
 - [Development](docs/DEVELOPMENT.md)
 - [Project brief](docs/PROBLEMSTATEMENT.md)
 

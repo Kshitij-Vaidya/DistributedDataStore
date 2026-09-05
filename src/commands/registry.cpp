@@ -1,5 +1,7 @@
 #include "novacache/commands/registry.hpp"
 
+#include "novacache/persistence/engine.hpp"
+
 #include <charconv>
 #include <chrono>
 #include <cstdint>
@@ -69,7 +71,11 @@ constexpr std::string_view wrong_type =
 }
 
 [[nodiscard]] RespValue set(const std::vector<std::string>& arguments, CommandContext& context) {
-    context.store.set(arguments[1], std::string{arguments[2]});
+    if (context.persistence != nullptr) {
+        context.persistence->durable_set(context.store, arguments[1], arguments[2]);
+    } else {
+        context.store.set(arguments[1], std::string{arguments[2]});
+    }
     return RespValue::simple("OK");
 }
 
@@ -90,7 +96,10 @@ constexpr std::string_view wrong_type =
     for (std::size_t index = 1; index < arguments.size(); ++index) {
         keys.emplace_back(arguments[index]);
     }
-    return RespValue::integer(static_cast<std::int64_t>(context.store.del_many(keys)));
+    const std::size_t removed = context.persistence != nullptr
+                                    ? context.persistence->durable_del(context.store, keys)
+                                    : context.store.del_many(keys);
+    return RespValue::integer(static_cast<std::int64_t>(removed));
 }
 
 [[nodiscard]] RespValue exists(const std::vector<std::string>& arguments, CommandContext& context) {
@@ -107,7 +116,11 @@ constexpr std::string_view wrong_type =
     if (!seconds.has_value() || !expiration_is_representable(*seconds)) {
         return RespValue::error(std::string{invalid_integer});
     }
-    const bool changed = context.store.expire(arguments[1], std::chrono::seconds{*seconds});
+    const bool changed =
+        context.persistence != nullptr
+            ? context.persistence->durable_expire(context.store, arguments[1],
+                                                  std::chrono::seconds{*seconds})
+            : context.store.expire(arguments[1], std::chrono::seconds{*seconds});
     return RespValue::integer(changed ? 1 : 0);
 }
 

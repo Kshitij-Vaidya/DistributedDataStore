@@ -62,7 +62,8 @@ A missing `GET` returns `$-1\r\n`.
 - `TTL` returns `-2` when the key does not exist.
 - `TTL` returns `-1` when the key has no expiration.
 - Runtime deadlines use a monotonic clock.
-- Each expiry also stores an absolute wall-clock timestamp for persistence.
+- Each expiry also stores an absolute wall-clock timestamp used by WAL and
+  snapshot recovery (see [PERSISTENCE.md](PERSISTENCE.md)).
 - A key observed after its deadline behaves as absent.
 
 ## Errors

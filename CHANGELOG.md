@@ -26,3 +26,8 @@ based on Keep a Changelog, and releases follow Semantic Versioning.
 - Bounded worker pool, per-connection command strands, and ordered responses.
 - Per-shard `shared_mutex` locking, active expiry sampling, and `INFO` stats.
 - Concurrent client/pipeline integration tests and store concurrency tests.
+- Optional WAL (`append.ncwal`) and atomic snapshots (`dump.ncs`) with CRC
+  protection, fsync modes `always`/`everysec`/`none`, and crash recovery.
+- Server flags `--data-dir`, `--fsync`, and `--snapshot-interval`.
+- Persistence unit tests and kill/restart integration coverage under
+  `fsync=always`.

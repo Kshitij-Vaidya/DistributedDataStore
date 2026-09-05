@@ -3,6 +3,7 @@
 #include "novacache/commands/registry.hpp"
 #include "novacache/net/reactor.hpp"
 #include "novacache/net/socket.hpp"
+#include "novacache/persistence/engine.hpp"
 #include "novacache/protocol/parser.hpp"
 #include "novacache/server/stats.hpp"
 #include "novacache/store/store.hpp"
@@ -15,6 +16,7 @@
 #include <deque>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -33,6 +35,10 @@ struct ServerConfig {
     int active_expiry_hz = 10;
     std::chrono::seconds idle_timeout{0};
     protocol::ParserLimits parser_limits{};
+    bool persistence_enabled = false;
+    std::string data_dir;
+    persistence::FsyncMode fsync = persistence::FsyncMode::everysec;
+    int snapshot_interval_seconds = 300;
 };
 
 class Server {
@@ -104,6 +110,7 @@ class Server {
     store::Store store_;
     commands::Registry registry_;
     Stats stats_;
+    std::unique_ptr<persistence::PersistenceEngine> persistence_;
     std::unique_ptr<util::ThreadPool> workers_;
     std::unordered_map<int, std::unique_ptr<Connection>> connections_;
     std::mutex completion_mutex_;

@@ -33,9 +33,24 @@ namespace {
     return value;
 }
 
+[[nodiscard]] std::optional<novacache::persistence::FsyncMode>
+parse_fsync(const std::string_view text) {
+    if (text == "always") {
+        return novacache::persistence::FsyncMode::always;
+    }
+    if (text == "everysec") {
+        return novacache::persistence::FsyncMode::everysec;
+    }
+    if (text == "none") {
+        return novacache::persistence::FsyncMode::none;
+    }
+    return std::nullopt;
+}
+
 void usage() {
     std::cerr << "usage: novacache-server [-h host|--host host] [-p port|--port port] "
-                 "[--workers N]\n";
+                 "[--workers N] [--data-dir PATH] [--fsync always|everysec|none] "
+                 "[--snapshot-interval SECONDS]\n";
 }
 
 } // namespace
@@ -80,6 +95,41 @@ int main(int argc, char* argv[]) {
                 return 2;
             }
             config.workers = *workers;
+            continue;
+        }
+        if (argument == "--data-dir") {
+            if (index + 1 >= argc) {
+                usage();
+                return 2;
+            }
+            config.data_dir = argv[++index];
+            config.persistence_enabled = true;
+            continue;
+        }
+        if (argument == "--fsync") {
+            if (index + 1 >= argc) {
+                usage();
+                return 2;
+            }
+            const auto mode = parse_fsync(argv[++index]);
+            if (!mode.has_value()) {
+                std::cerr << "novacache-server: invalid fsync mode\n";
+                return 2;
+            }
+            config.fsync = *mode;
+            continue;
+        }
+        if (argument == "--snapshot-interval") {
+            if (index + 1 >= argc) {
+                usage();
+                return 2;
+            }
+            const std::optional<std::size_t> interval = parse_size(argv[++index]);
+            if (!interval.has_value() || *interval > 86400U * 365U) {
+                std::cerr << "novacache-server: invalid snapshot interval\n";
+                return 2;
+            }
+            config.snapshot_interval_seconds = static_cast<int>(*interval);
             continue;
         }
         usage();
